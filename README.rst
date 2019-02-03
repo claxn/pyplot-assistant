@@ -3,13 +3,13 @@ pyplot-assistant
 ================
 
 
-Add a short description here!
+Matplotlib pyplot wrapper for increasing the user-friendliness and applicability of pyplot.
 
 
 Description
 ===========
 
-A longer description of your project goes here...
+Matplotlib pyplot wrapper for increasing the user-friendliness and applicability of pyplot.
 
 
 Note

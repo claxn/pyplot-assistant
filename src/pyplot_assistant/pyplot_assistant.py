@@ -17,16 +17,52 @@ import matplotlib.patches as mpatches
 import matplotlib.dates as mdates
 import datetime
 
+figure(num=None, figsize=(8, 6), dpi=80, facecolor='w', edgecolor='k')
 
 class PyPlotBase(object):
-    def __init__(self, type="base", name="base", format="png", file_outpath=".\plots", overwrite=False, latex=False,
+    def __init__(self, output_dirpath=".\plots", name="base", format="png", overwrite=False, latex=False,
                  size="10x7.5", title="", xlabel="", ylabel="", xmin=None, ymin=None, xmax=None, ymax=None,
-                 xtick_labels=None, xtick_rot=None, color="random", alpha=1, labels=None, legend_loc=1, fontsize=None):
+                 xtick_labels=None, xtick_rot=None, color="random", alpha=1, label=None, legend_loc=1, fontsize=None):
 
-        self.type = type
+        """
+
+        :param output_dirpath: str
+            absolute directory path where the plot should be saved to.
+        :param name: str
+            name of the plot (will be also the final filename)
+        :param format: str
+            the format of the output file (e.g. png, pdf, ...)
+        :param overwrite: boolean
+            flag if an existing file should be written or not.
+        :param latex: boolean
+            flag if LaTeX should be used or not (LaTeX environment required!).
+        :param size: str
+            size of the plot in inches given in the following format '{height}x{width}' (e.g. '7.5x10').
+        :param title: str
+            title of the plot.
+        :param xlabel:
+            x axis label.
+        :param ylabel:
+            x axis label.
+        :param xmin: float/int
+            minimum value of x axis.
+        :param ymin: float/int
+            minimum value of y axis.
+        :param xmax: float/int
+            maximum value of x axis.
+        :param ymax: float/int
+            maximum value of y axis.
+        :param xtick_labels:
+        :param xtick_rot:
+        :param color:
+        :param alpha:
+        :param labels:
+        :param legend_loc:
+        :param fontsize:
+        """
         self.name = name
         self.format = format
-        self.file_outpath = file_outpath
+        self.output_dirpath = output_dirpath
         self.title = title
         self.xlabel = xlabel
         self.ylabel = ylabel
