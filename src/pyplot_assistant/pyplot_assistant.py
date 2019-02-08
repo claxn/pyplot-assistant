@@ -22,7 +22,7 @@ figure(num=None, figsize=(8, 6), dpi=80, facecolor='w', edgecolor='k')
 class PyPlotBase(object):
     def __init__(self, output_dirpath=".\plots", name="base", format="png", overwrite=False, latex=False,
                  size="10x7.5", title="", xlabel="", ylabel="", xmin=None, ymin=None, xmax=None, ymax=None,
-                 xtick_labels=None, xtick_rot=None, color="random", alpha=1, label=None, legend_loc=1, fontsize=None):
+                 xtick_labels=None, xtick_rot=None, colors="random", alpha=1, labels=None, legend_loc=1, fontsize=None):
 
         """
 
@@ -40,9 +40,9 @@ class PyPlotBase(object):
             size of the plot in inches given in the following format '{height}x{width}' (e.g. '7.5x10').
         :param title: str
             title of the plot.
-        :param xlabel:
+        :param xlabel: str
             x axis label.
-        :param ylabel:
+        :param ylabel: str
             x axis label.
         :param xmin: float/int
             minimum value of x axis.
@@ -52,72 +52,95 @@ class PyPlotBase(object):
             maximum value of x axis.
         :param ymax: float/int
             maximum value of y axis.
-        :param xtick_labels:
-        :param xtick_rot:
-        :param color:
-        :param alpha:
-        :param labels:
-        :param legend_loc:
-        :param fontsize:
+        :param xtick_labels: list
+            labels of x axis.
+        :param xtick_rot: int
+            rotation of labels along x axis.
+        :param colors: str, list
+            drawing color/s of the plot (multiple values can be given as a list).
+        :param alpha: float [0,1]
+            opacity of the drawing.
+        :param labels: str/list
+            label/s of
+        :param legend_loc: int [0,9]
+            location of legend
+        :param fontsize: float/int
+            fontsize for text-specific parts of the plot
         """
-        self.name = name
-        self.format = format
-        self.output_dirpath = output_dirpath
-        self.title = title
-        self.xlabel = xlabel
-        self.ylabel = ylabel
-        self.fontsize = fontsize
-        self.xtick_labels = xtick_labels
-        self.xtick_rot = xtick_rot
+        # general settings
+        self.plt = plt
+        self.overwrite = overwrite
+        # plot size settings
+        self.size = size
         self.xmin = xmin
         self.ymin = ymin
         self.xmax = xmax
         self.ymax = ymax
-
-        self.size = size
-        self.latex = latex
-        self.plt = plt
-        self.color = color
+        # plot style settings
+        self.colors = colors
         self.alpha = alpha
-        self.label = label
-
-        self.fig_name = os.path.join(self.file_outpath, self.name + '.' + self.format)
-        self.overwrite = overwrite
+        self.latex = latex
+        self.xtick_rot = xtick_rot
         self.legend_loc = legend_loc
+        # labelling
+        self.title = title
+        self.xlabel = xlabel
+        self.ylabel = ylabel
+        self.fontsize = fontsize
+        self.labels = labels
+        self.xtick_labels = xtick_labels
+        # plot and file naming
+        self.name = name
+        self.format = format
+        self.output_dirpath = output_dirpath
+        filename = self.name + '.' + self.format
+        self.fig_name = os.path.join(self.output_dirpath, filename)
+
 
     def __repr__(self):
+        """
+        Class representation as string.
+        :return: str
+            class dictionary in a 'pretty-print' string format
+        """
         output = []
         for k in self.__dict__:
             output.append('{0}: {1}'.format(k, self.__dict__[k]))
         return '\n'.join(output)
 
     @staticmethod
-    def _split_xy(data):
+    def str2num(string):
+        string = string.strip()
+        number = np.nan
+        if string not in ['None','NaN','nan','inf']:
+            try:
+                number = float(number)
+            except ValueError:
+                raise ValueError('String can not be converted to a number. Please check the input data.')
+
+        return number
+
+    def parse(self, data, ordered=False):
         x_data = dict()
         y_data = dict()
         data_counter = 0
-        for entry in data:
-            entry = entry.split(';')
-            id = entry[0]
-            axis_num = id.split('_')
-            axis = axis_num[0]
-            if len(axis_num) != 2:
-                num = data_counter
+        for entries in data:
+            entries = entries.split(';')
+            data_id = entries[0]
+            data_id_split = data_id.split('_')
+            axis = data_id_split[0]
+            if len(data_id_split) != 2:
+                idx = data_counter
             else:
-                num = axis_num[1]
+                idx = data_id_split[1]
 
             if axis == 'x':
-                #x_data_parsed = []
-                #for x in entry[1:]:
-                    #x_parsed = np.nan
-                    #if x != 'None'
-                    #x_data_parsed.append()
-                x_data[num] = [float(x) if x != 'None' else np.nan for x in entry[1:]]
+                x_data[idx] = [self.str2num(entry) for entry in entries[1:]]
             elif axis == 'y':
-                y_data[num] = [float(x) if x != 'None' else np.nan for x in entry[1:]]
+                y_data[idx] = [self.str2num(entry) for entry in entries[1:]]
                 data_counter += 1
             else:
-                y_data[num] = [float(x) if x != 'None' else np.nan for x in entry]
+                y_data[idx] = [self.str2num(entry) for entry in entries[1:]]
                 data_counter += 1
 
         return x_data, y_data
