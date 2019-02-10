@@ -17,12 +17,13 @@ import matplotlib.patches as mpatches
 import matplotlib.dates as mdates
 import datetime
 
-figure(num=None, figsize=(8, 6), dpi=80, facecolor='w', edgecolor='k')
 
+# TODO: refactor conversion with getattr
 class PyPlotBase(object):
-    def __init__(self, output_dirpath=".\plots", name="base", format="png", overwrite=False, latex=False,
+    def __init__(self, output_dirpath="plots", name="base", format="png", overwrite=False, latex=False,
                  size="10x7.5", title="", xlabel="", ylabel="", xmin=None, ymin=None, xmax=None, ymax=None,
-                 xtick_labels=None, xtick_rot=None, colors="random", alpha=1, labels=None, legend_loc=1, fontsize=None):
+                 xtick_labels=None, xtick_rot=None, colours="random", alpha=1, labels=None, legend_loc=1, fontsize=None,
+                 ordered=True):
 
         """
 
@@ -56,8 +57,8 @@ class PyPlotBase(object):
             labels of x axis.
         :param xtick_rot: int
             rotation of labels along x axis.
-        :param colors: str, list
-            drawing color/s of the plot (multiple values can be given as a list).
+        :param colours: str, list
+            drawing colour/s of the plot (multiple values can be given as a list).
         :param alpha: float [0,1]
             opacity of the drawing.
         :param labels: str/list
@@ -70,6 +71,7 @@ class PyPlotBase(object):
         # general settings
         self.plt = plt
         self.overwrite = overwrite
+        self.data_ordered = ordered
         # plot size settings
         self.size = size
         self.xmin = xmin
@@ -77,7 +79,7 @@ class PyPlotBase(object):
         self.xmax = xmax
         self.ymax = ymax
         # plot style settings
-        self.colors = colors
+        self.colours = colours
         self.alpha = alpha
         self.latex = latex
         self.xtick_rot = xtick_rot
@@ -96,6 +98,11 @@ class PyPlotBase(object):
         filename = self.name + '.' + self.format
         self.fig_name = os.path.join(self.output_dirpath, filename)
 
+        # check data types
+        self.__check_data_types()
+
+        # convert data given as strings
+        self.__convert()
 
     def __repr__(self):
         """
@@ -108,24 +115,195 @@ class PyPlotBase(object):
             output.append('{0}: {1}'.format(k, self.__dict__[k]))
         return '\n'.join(output)
 
-    @staticmethod
-    def str2num(string):
-        string = string.strip()
-        number = np.nan
-        if string not in ['None','NaN','nan','inf']:
-            try:
-                number = float(number)
-            except ValueError:
-                raise ValueError('String can not be converted to a number. Please check the input data.')
+    def __check_data_types(self):
+        if type(self.overwrite) != bool:
+            err_message = "Argument 'overwrite' has to be of type 'bool', not '{}'".format(type(self.overwrite))
+            raise ValueError(err_message)
 
-        return number
+        if type(self.data_ordered) != bool:
+            err_message = "Argument 'data_ordered' has to be of type 'bool', not '{}'".format(type(self.data_ordered))
+            raise ValueError(err_message)
 
-    def parse(self, data, ordered=False):
+        if type(self.size) not in [str, tuple]:
+            err_message = "Argument 'size' has to be of type 'tuple' or 'str', not '{}'".format(type(self.size))
+            raise ValueError(err_message)
+
+        if type(self.xmin) not in [int, float, datetime.datetime]:
+            err_message = "Argument 'xmin' has to be of type 'int', 'float' or 'datetime.datetime' " \
+                          "not '{}'".format(type(self.xmin))
+            raise ValueError(err_message)
+
+        if type(self.ymin) not in [int, float, datetime.datetime]:
+            err_message = "Argument 'ymin' has to be of type 'int', 'float' or 'datetime.datetime' " \
+                          "not '{}'".format(type(self.ymin))
+            raise ValueError(err_message)
+
+        if type(self.xmax) not in [int, float, datetime.datetime]:
+            err_message = "Argument 'xmax' has to be of type 'int', 'float' or 'datetime.datetime' " \
+                          "not '{}'".format(type(self.xmax))
+            raise ValueError(err_message)
+
+        if type(self.ymax) not in [int, float, datetime.datetime]:
+            err_message = "Argument 'ymax' has to be of type 'int', 'float' or 'datetime.datetime' " \
+                          "not '{}'".format(type(self.ymax))
+            raise ValueError(err_message)
+
+        if type(self.colours) not in [str, list]:
+            err_message = "Argument 'colours' has to be of type 'str' or 'list' not '{}'".format(type(self.colours))
+            raise ValueError(err_message)
+
+        if type(self.alpha) not in [int, float]:
+            err_message = "Argument 'alpha' has to be of type 'int' or 'float' not '{}'".format(type(self.alpha))
+            raise ValueError(err_message)
+
+        if type(self.latex) != bool:
+            err_message = "Argument 'latex' has to be of type 'bool', not '{}'".format(type(self.latex))
+            raise ValueError(err_message)
+
+        if type(self.xtick_rot) not in [int, float]:
+            err_message = "Argument 'xtick_rot' has to be of type 'int' or 'float' not '{}'".format(type(self.xtick_rot))
+            raise ValueError(err_message)
+
+        if type(self.legend_loc) != int:
+            err_message = "Argument 'legend_loc' has to be of type 'int', not '{}'".format(type(self.legend_loc))
+            raise ValueError(err_message)
+
+        if type(self.title) != str:
+            err_message = "Argument 'title' has to be of type 'str', not '{}'".format(type(self.title))
+            raise ValueError(err_message)
+
+        if type(self.xlabel) != str:
+            err_message = "Argument 'xlabel' has to be of type 'str', not '{}'".format(type(self.xlabel))
+            raise ValueError(err_message)
+
+        if type(self.ylabel) != str:
+            err_message = "Argument 'ylabel' has to be of type 'str', not '{}'".format(type(self.ylabel))
+            raise ValueError(err_message)
+
+        if type(self.fontsize) != int:
+            err_message = "Argument 'fontsize' has to be of type 'int', not '{}'".format(type(self.fontsize))
+            raise ValueError(err_message)
+
+        if type(self.labels) not in [str, list]:
+            err_message = "Argument 'labels' has to be of type 'str' or 'list' not '{}'".format(type(self.labels))
+            raise ValueError(err_message)
+
+        if type(self.xtick_labels) not in [str, list]:
+            err_message = "Argument 'xtick_labels' has to be of type 'str' or 'list' not '{}'".format(type(self.xtick_labels))
+            raise ValueError(err_message)
+
+        if type(self.name) != str:
+            err_message = "Argument 'name' has to be of type 'str', not '{}'".format(type(self.name))
+            raise ValueError(err_message)
+
+        if type(self.format) != str:
+            err_message = "Argument 'format' has to be of type 'str', not '{}'".format(type(self.format))
+            raise ValueError(err_message)
+
+        if type(self.output_dirpath) != str:
+            err_message = "Argument 'output_dirpath' has to be of type 'str', not '{}'".format(type(self.output_dirpath))
+            raise ValueError(err_message)
+
+
+    def __check_str(self, class_attributes):
+        for class_attribute in class_attributes:
+            class_variable = self.__getattribute__(class_attribute)
+            if type(class_variable) != str:
+                err_message = "Argument '{}' has to be of type 'str', not '{}'".format(class_attribute,
+                                                                                       type(class_variable))
+                raise ValueError(err_message)
+
+    def __convert(self):
+
+        if type(self.overwrite) == str:
+            self.overwrite = PyPlotBase.str2none(self.overwrite)
+            if self.overwrite is not None:
+                self.overwrite = self.overwrite.lower() == "true"
+
+        if type(self.data_ordered) == str:
+            self.data_ordered = PyPlotBase.str2none(self.data_ordered)
+            if self.data_ordered is not None:
+                self.data_ordered = self.data_ordered.lower() == "true"
+
+        if type(self.xmin) == str:
+            self.xmin = PyPlotBase.str2none(self.xmin)
+            if self.xmin is not None:
+                self.xmin = self.str2num(self.xmin, nodata_value=None)
+                if self.xmin is None:
+                    self.xmin = self.str2datetime(self.xmin, nodata_value=None)
+
+        if type(self.xmax) == str:
+            self.xmax = PyPlotBase.str2none(self.xmax)
+            if self.xmax is not None:
+                self.xmax = self.str2num(self.xmax, nodata_value=None)
+                if self.xmax is None:
+                    self.xmax = self.str2datetime(self.xmax, nodata_value=None)
+
+        if type(self.ymin) == str:
+            self.ymin = PyPlotBase.str2none(self.ymin)
+            if self.ymin is not None:
+                self.ymin = self.str2num(self.ymin, nodata_value=None)
+                if self.ymin is None:
+                    self.ymin = self.str2datetime(self.ymin, nodata_value=None)
+
+        if type(self.ymax) == str:
+            self.ymax = PyPlotBase.str2none(self.ymax)
+            if self.ymax is not None:
+                self.ymax = self.str2num(self.ymax, nodata_value=None)
+                if self.ymax is None:
+                    self.ymax = self.str2datetime(self.ymax, nodata_value=None)
+
+        if type(self.alpha) == str:
+            self.alpha = PyPlotBase.str2none(self.alpha)
+            if self.alpha is not None:
+                self.alpha = self.str2num(self.alpha, nodata_value=None)
+
+        if type(self.latex) == str:
+            self.latex = PyPlotBase.str2none(self.latex)
+            if self.latex is not None:
+                self.latex = self.latex.lower() == "true"
+
+        if type(self.xtick_rot) == str:
+            self.xtick_rot = PyPlotBase.str2none(self.xtick_rot)
+            if self.xtick_rot is not None:
+                self.xtick_rot = self.str2num(self.xtick_rot, nodata_value=None)
+
+        if type(self.legend_loc) == str:
+            self.legend_loc = PyPlotBase.str2none(self.legend_loc)
+            if self.legend_loc is not None:
+                self.legend_loc = self.str2num(self.legend_loc, nodata_value=None)
+
+        if type(self.fontsize) == str:
+            self.fontsize = PyPlotBase.str2none(self.fontsize)
+            if self.fontsize is not None:
+                self.fontsize = self.str2num(self.fontsize, nodata_value=None)
+
+        if type(self.size) == str:
+            self.size = self.dimstr2tuple(self.size)
+
+        if type(self.colours) == str:
+            self.colours = self.str2colours(self.colours)
+
+        if type(self.labels) == str:
+            self.labels = self.str2labels(self.labels)
+
+        if type(self.xtick_labels) == str:
+            self.labels = self.str2labels(self.xtick_labels)
+
+    def parse(self, data, ordered=True, delimiter=';'):
+        self.data_ordered = ordered
         x_data = dict()
         y_data = dict()
         data_counter = 0
-        for entries in data:
-            entries = entries.split(';')
+        for i, entries in enumerate(data):
+            if ordered and (entries[0] not in ['x', 'y']):
+                if i%2 == 0:
+                    axis = "x"
+                else:
+                    axis = "y"
+                entries = axis + delimiter + entries
+
+            entries = entries.split(delimiter)
             data_id = entries[0]
             data_id_split = data_id.split('_')
             axis = data_id_split[0]
@@ -135,56 +313,99 @@ class PyPlotBase(object):
                 idx = data_id_split[1]
 
             if axis == 'x':
-                x_data[idx] = [self.str2num(entry) for entry in entries[1:]]
+                x_data[idx] = [self.str2num(entry, nodata_value=np.nan) for entry in entries[1:]]
             elif axis == 'y':
-                y_data[idx] = [self.str2num(entry) for entry in entries[1:]]
+                y_data[idx] = [self.str2num(entry, nodata_value=np.nan) for entry in entries[1:]]
                 data_counter += 1
             else:
-                y_data[idx] = [self.str2num(entry) for entry in entries[1:]]
-                data_counter += 1
+                raise Exception('Wrong tag/axis specification. Use either "x" or "y".')
+
+        # equalise both dictionary
+        for i in y_data.keys():
+            if i not in x_data.keys():
+                x_data[i] = x_data[max(x_data.keys())]
 
         return x_data, y_data
 
-    def _split_colors(self, data_len=None):
-        if self.color == 'random':
-            cmap = plt.cm.get_cmap('hsv', 1000)
-            rnd_idxs = random.sample(range(0, 1000), data_len)
-            self.color = [cmap(i) for i in rnd_idxs]
-        else:
-            colors = self.color.split(';')
-            self.color = []
-            #if data_len is None:
-            data_len = len(colors)
-            for i in range(0, data_len):
-                if i > (len(colors)-1):
-                    self.color.append(colors[-1])
-                else:
-                    colors[i] = colors[i].strip()
-                    if colors[i] == '':
-                        self.color.append(plt.cm.get_cmap('hsv', 1)[0])
-                    elif ',' in colors[i]:
-                        colors[i] = self.color2tuple(colors[i])
-                        self.color.append(colors[i])
-                    else:
-                        self.color.append(colors[i])
+    @staticmethod
+    def rnd_colours(n):
+        cmap = plt.cm.get_cmap('hsv', 1000)
+        rnd_idxs = random.sample(range(0, 1000), n)
 
-    def _split_labels(self, data_len):
-        labels = self.label.split(";")
-        if len(labels) != data_len:
-            raise Exception('Please provide all labels according to the given data.')
-        self.label = labels
+        return [cmap(idx) for idx in rnd_idxs]
 
     @staticmethod
-    def color2tuple(color):
-        #regex = re.compile('[^,.0-9]')
-        #color = regex.sub('', color)
-        color = color.replace('(', '').replace(')', '').strip()
-        color = color.split(',')
-        if len(color) != 3:
-            raise Exception('Color type is not valid')
+    def str2num(string, nodata_value=None):
+        string = string.strip()
+        number = nodata_value
+        string = PyPlotBase.str2none(string)
+        if string is not None:
+            try:
+                number = float(string)
+            except ValueError:
+                number = nodata_value
+
+        return number
+
+    @staticmethod
+    def str2datetime(string, nodata_value=None):
+        used_time_formats = ["%Y%m%d%H%i%s", "%Y%m%d", "%Y-%m-%d %H:%M:%S"]
+        date_time = nodata_value
+        for used_time_format in used_time_formats:
+            try:
+                date_time = datetime.strptime(string, used_time_format)
+            except:
+                continue
+
+        if not date_time:
+            raise Exception('Datetime format unknown.')
+        return date_time
+
+    @staticmethod
+    def str2none(string):
+        if string.strip() in ['None', 'NaN', 'nan', 'inf']:
+            return None
         else:
-            color = (float(color[0]), float(color[1]), float(color[2]))
-            return color
+            return string
+
+    @staticmethod
+    def str2colours(string, delimiter=';', delimiter_channel=',', left_closure='(', right_closure=')'):
+        if delimiter == delimiter_channel:
+            raise Exception('Delimiter of the different colours has to be different than the delimiter of the colour channels.')
+        str_parts = string.split(delimiter)
+        colours = []
+        n = len(str_parts)
+        for i in range(n):
+            if delimiter_channel in str_parts[i]:
+                colour = PyPlotBase.colourstr2tuple(str_parts[i], delimiter=delimiter, left_closure=left_closure,
+                                                    right_closure=right_closure)
+                colours.append(colour)
+            else:
+                colours.append(str_parts[i])
+
+    @staticmethod
+    def colourstr2tuple(colour_str, delimiter=',', left_closure='(', right_closure=')'):
+        colour_str = colour_str.replace(left_closure, '').replace(right_closure, '').strip()
+        colour_str_parts = colour_str.split(delimiter)
+        if len(colour_str_parts) != 3:
+            raise Exception('The given colour type is not valid. All three colour channels are needed (RGB).')
+
+        colour = (float(colour_str_parts[0]), float(colour_str_parts[1]), float(colour_str_parts[2]))
+        return colour
+
+    @staticmethod
+    def str2labels(label_str, delimiter=';'):
+        labels = label_str.split(delimiter)
+        return labels
+
+    @staticmethod
+    def dimstr2tuple(dim_str, delimiter='x'):
+        dim_str_parts = dim_str.split(delimiter)
+        if len(dim_str_parts) != 2:
+            raise Exception('Only two dimensions are allowed.')
+
+        dims = (float(dim_str_parts[0]), float(dim_str_parts[1]))
+        return dims
 
     def show(self):
         self.plt.show()
@@ -202,26 +423,30 @@ class PyPlotBase(object):
     def close(self):
         fig_labels = self.plt.get_figlabels()
         for fig_name in fig_labels:
-            if not os.path.isdir(os.path.dirname(fig_name)):
-                os.makedirs(os.path.dirname(fig_name))
             self.plt.figure(fig_name)
             self.plt.close()
 
-class GeoPlotHist(GeoPlot):
-    def __init__(self, title="", xlabel="", ylabel="", xtick_labels=None, xtick_rot=None,
-                 xmin=lambda x: np.nanmin(x), ymin=lambda x: np.nanmin(x),
-                 xmax=lambda x: np.nanmax(x), ymax=lambda x: np.nanmax(x),
-                 type="line", name="noname", format="png", size="10x7.5", latex="False",
-                 color="random", alpha=1, label="", file_outpath=".\plots", overwrite=True, legend_loc=1,
-                 bins=10, normed=False, bin_width=None, fontsize=None):
-        GeoPlot.__init__(self, title=title, xlabel=xlabel, ylabel=ylabel, xtick_labels=xtick_labels, xtick_rot=xtick_rot,
-                 xmin=xmin, ymin=ymin,xmax=xmax, ymax=ymax,
-                 type=type, name=name, format=format, size=size, latex=latex,
-                 color=color, alpha=alpha, label=label, file_outpath=file_outpath, overwrite=overwrite, legend_loc=legend_loc,
-                         fontsize=fontsize)
+class PyPlotHist(PyPlotBase):
+
+    def __init__(self, output_dirpath="plots", name="base", format="png", overwrite=False, latex=False,
+                 size="10x7.5", title="", xlabel="", ylabel="", xmin=None, ymin=None, xmax=None, ymax=None,
+                 xtick_labels=None, xtick_rot=None, colours="random", alpha=1, labels=None, legend_loc=1, fontsize=None,
+                 ordered=True,
+                 bins=10, normed=False, bin_width=None):
+        PyPlotBase.__init__(self, output_dirpath=output_dirpath, name=name, format=format, overwrite=overwrite,
+                            latex=latex, size=size, title=title, xlabel=xlabel, ylabel=ylabel, xmin=xmin, ymin=ymin,
+                            xmax=xmax, ymax=ymax, xtick_labels=xtick_labels, xtick_rot=xtick_rot, colours=colours,
+                            alpha=alpha, labels=labels, legend_loc=legend_loc, fontsize=fontsize, ordered=ordered)
         self.bins = bins
         self.normed = normed
         self.bin_width = bin_width
+
+        # check data types
+        self.__check_data_types()
+
+        # convert data given as strings
+        self.__convert()
+
 
     def __repr__(self):
         output = []
@@ -229,9 +454,34 @@ class GeoPlotHist(GeoPlot):
             output.append('{0}: {1}'.format(k, self.__dict__[k]))
         return '\n'.join(output)
 
+    def __convert(self):
+
+        if type(self.bins) == str:
+            self.bins = int(self.bins)
+
+        if type(self.normed) == str:
+            self.normed = self.normed.lower() == "true"
+
+        if type(self.bin_width) == str:
+            self.bin_width = float(self.bin_width)
+
+    def __check_data_types(self):
+
+        if type(self.bins) != int:
+            err_message = "Argument 'bins' has to be of type 'int', not '{}'".format(type(self.bins))
+            raise ValueError(err_message)
+
+        if type(self.normed) != bool:
+            err_message = "Argument 'normed' has to be of type 'bool', not '{}'".format(type(self.normed))
+            raise ValueError(err_message)
+
+        if type(self.bin_width) not in [int, float]:
+            err_message = "Argument 'bin_width' has to be of type 'int' or 'float', not '{}'".format(type(self.bin_width))
+            raise ValueError(err_message)
+
     def plot(self, data):
-        dims = [float(x) for x in self.size.split('x')]
-        fig = self.plt.figure(self.fig_name)
+        dims = self.dimstr2tuple(self.size)
+        fig = self.plt.figure(num=self.fig_name, figsize=dims, dpi=80, facecolor='w', edgecolor='k')
         fig.set_size_inches(dims[0], dims[1], forward=True)
 
         if self.latex.lower() == "true":
