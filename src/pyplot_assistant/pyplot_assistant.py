@@ -2,28 +2,30 @@
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator, FuncFormatter
 import matplotlib.cm as cm
-from PIL import Image
+#from PIL import Image
 import random
 import re
 import numpy as np
 import os
-from Geotiff import Geotiff
+#from Geotiff import Geotiff
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import matplotlib as mpl
 from collections import OrderedDict
-from funs import find_fids
+#from funs import find_fids
 from matplotlib.colors import LinearSegmentedColormap
 import matplotlib.patches as mpatches
 import matplotlib.dates as mdates
 import datetime
 
 
-# TODO: refactor conversion with getattr
+# TODO: z axis is not working at the moment
 class PyPlotBase(object):
-    def __init__(self, output_dirpath="plots", name="base", format="png", overwrite=False, latex=False,
-                 size="10x7.5", title="", xlabel="", ylabel="", xmin=None, ymin=None, xmax=None, ymax=None,
-                 xtick_labels=None, xtick_rot=None, colours="random", alpha=1, labels=None, legend_loc=1, fontsize=None,
-                 ordered=True):
+    def __init__(self, output_dirpath="plots", name="base", format="png",
+                 overwrite=False, latex=False, data_ordered=True,
+                 fig_size="10x7.5", fig_dpi=80, fig_facecolor='w', fig_edgecolor='k',
+                 fig_title="", xlabel="", ylabel="", xmin=None, ymin=None, xmax=None, ymax=None,
+                 xtick_labels=None, xtick_rot=None, colours="random", alpha=1, labels=None, legend_loc=1,
+                 fontsize=None):
 
         """
 
@@ -37,9 +39,15 @@ class PyPlotBase(object):
             flag if an existing file should be written or not.
         :param latex: boolean
             flag if LaTeX should be used or not (LaTeX environment required!).
-        :param size: str
+        :param fig_size: str
             size of the plot in inches given in the following format '{height}x{width}' (e.g. '7.5x10').
-        :param title: str
+        :param fig_dpi: int
+            dots per inch for plots written to disk as images.
+        :param fig_facecolor: string, tuple
+            face colour of the plot
+        :param fig_edgecolor: string, tuple
+            edge colour of the plot
+        :param fig_title: str
             title of the plot.
         :param xlabel: str
             x axis label.
@@ -71,21 +79,24 @@ class PyPlotBase(object):
         # general settings
         self.plt = plt
         self.overwrite = overwrite
-        self.data_ordered = ordered
+        self.data_ordered = data_ordered
         # plot size settings
-        self.size = size
+        self.fig_dpi = fig_dpi
+        self.fig_size = fig_size
         self.xmin = xmin
         self.ymin = ymin
         self.xmax = xmax
         self.ymax = ymax
         # plot style settings
+        self.fig_facecolor = fig_facecolor
+        self.fig_edgecolor = fig_edgecolor
         self.colours = colours
         self.alpha = alpha
         self.latex = latex
         self.xtick_rot = xtick_rot
         self.legend_loc = legend_loc
         # labelling
-        self.title = title
+        self.fig_title = fig_title
         self.xlabel = xlabel
         self.ylabel = ylabel
         self.fontsize = fontsize
@@ -99,10 +110,10 @@ class PyPlotBase(object):
         self.fig_name = os.path.join(self.output_dirpath, filename)
 
         # check data types
-        self.__check_data_types()
+        self.check_data_types(self.__allowed_data_types())
 
         # convert data given as strings
-        self.__convert()
+        self.convert(self.__convert_funs())
 
     def __repr__(self):
         """
@@ -115,217 +126,147 @@ class PyPlotBase(object):
             output.append('{0}: {1}'.format(k, self.__dict__[k]))
         return '\n'.join(output)
 
-    def __check_data_types(self):
-        if type(self.overwrite) != bool:
-            err_message = "Argument 'overwrite' has to be of type 'bool', not '{}'".format(type(self.overwrite))
-            raise ValueError(err_message)
+    def __allowed_data_types(self):
 
-        if type(self.data_ordered) != bool:
-            err_message = "Argument 'data_ordered' has to be of type 'bool', not '{}'".format(type(self.data_ordered))
-            raise ValueError(err_message)
+        class_attributes_data_types = dict()
+        class_attributes_data_types['overwrite'] = [bool]
+        class_attributes_data_types['data_ordered'] = [bool]
+        class_attributes_data_types['fig_size'] = [str, tuple]
+        class_attributes_data_types['fig_dpi'] = [int]
+        class_attributes_data_types['fig_facecolor'] = [str, tuple]
+        class_attributes_data_types['fig_edgecolor'] = [str, tuple]
+        class_attributes_data_types['xmin'] = [int, float, datetime.datetime]
+        class_attributes_data_types['ymin'] = [int, float, datetime.datetime]
+        class_attributes_data_types['xmax'] = [int, float, datetime.datetime]
+        class_attributes_data_types['ymax'] = [int, float, datetime.datetime]
+        class_attributes_data_types['colours'] = [str, list]
+        class_attributes_data_types['alpha'] = [int, float]
+        class_attributes_data_types['latex'] = [bool]
+        class_attributes_data_types['xtick_rot'] = [int, float]
+        class_attributes_data_types['legend_loc'] = [int]
+        class_attributes_data_types['fig_title'] = [str]
+        class_attributes_data_types['xlabel'] = [str]
+        class_attributes_data_types['ylabel'] = [str]
+        class_attributes_data_types['fontsize'] = [int]
+        class_attributes_data_types['labels'] = [str, list]
+        class_attributes_data_types['xtick_labels'] = [str, list]
+        class_attributes_data_types['name'] = [str]
+        class_attributes_data_types['format'] = [str]
+        class_attributes_data_types['output_dirpath'] = [str]
 
-        if type(self.size) not in [str, tuple]:
-            err_message = "Argument 'size' has to be of type 'tuple' or 'str', not '{}'".format(type(self.size))
-            raise ValueError(err_message)
+        return class_attributes_data_types
 
-        if type(self.xmin) not in [int, float, datetime.datetime]:
-            err_message = "Argument 'xmin' has to be of type 'int', 'float' or 'datetime.datetime' " \
-                          "not '{}'".format(type(self.xmin))
-            raise ValueError(err_message)
+    def __convert_funs(self):
 
-        if type(self.ymin) not in [int, float, datetime.datetime]:
-            err_message = "Argument 'ymin' has to be of type 'int', 'float' or 'datetime.datetime' " \
-                          "not '{}'".format(type(self.ymin))
-            raise ValueError(err_message)
+        class_attributes_convert_funs = dict()
+        class_attributes_convert_funs['overwrite'] = [self.str2bool]
+        class_attributes_convert_funs['data_ordered'] = [self.str2bool]
+        class_attributes_convert_funs['fig_size'] = [self.dimstr2tuple]
+        class_attributes_convert_funs['fig_dpi'] = [self.str2num]
+        class_attributes_convert_funs['fig_facecolor'] = [self.str2colours]
+        class_attributes_convert_funs['fig_edgecolor'] = [self.str2colours]
+        class_attributes_convert_funs['xmin'] = [self.str2num, self.str2datetime]
+        class_attributes_convert_funs['ymin'] = [self.str2num, self.str2datetime]
+        class_attributes_convert_funs['xmax'] = [self.str2num, self.str2datetime]
+        class_attributes_convert_funs['ymax'] = [self.str2num, self.str2datetime]
+        class_attributes_convert_funs['colours'] = [self.str2colours]
+        class_attributes_convert_funs['alpha'] = [self.str2num]
+        class_attributes_convert_funs['latex'] = [self.str2bool]
+        class_attributes_convert_funs['xtick_rot'] = [self.str2num]
+        class_attributes_convert_funs['legend_loc'] = [self.str2num]
+        class_attributes_convert_funs['fontsize'] = [self.str2num]
+        class_attributes_convert_funs['labels'] = [self.str2labels]
+        class_attributes_convert_funs['xtick_labels'] = [self.str2labels]
 
-        if type(self.xmax) not in [int, float, datetime.datetime]:
-            err_message = "Argument 'xmax' has to be of type 'int', 'float' or 'datetime.datetime' " \
-                          "not '{}'".format(type(self.xmax))
-            raise ValueError(err_message)
-
-        if type(self.ymax) not in [int, float, datetime.datetime]:
-            err_message = "Argument 'ymax' has to be of type 'int', 'float' or 'datetime.datetime' " \
-                          "not '{}'".format(type(self.ymax))
-            raise ValueError(err_message)
-
-        if type(self.colours) not in [str, list]:
-            err_message = "Argument 'colours' has to be of type 'str' or 'list' not '{}'".format(type(self.colours))
-            raise ValueError(err_message)
-
-        if type(self.alpha) not in [int, float]:
-            err_message = "Argument 'alpha' has to be of type 'int' or 'float' not '{}'".format(type(self.alpha))
-            raise ValueError(err_message)
-
-        if type(self.latex) != bool:
-            err_message = "Argument 'latex' has to be of type 'bool', not '{}'".format(type(self.latex))
-            raise ValueError(err_message)
-
-        if type(self.xtick_rot) not in [int, float]:
-            err_message = "Argument 'xtick_rot' has to be of type 'int' or 'float' not '{}'".format(type(self.xtick_rot))
-            raise ValueError(err_message)
-
-        if type(self.legend_loc) != int:
-            err_message = "Argument 'legend_loc' has to be of type 'int', not '{}'".format(type(self.legend_loc))
-            raise ValueError(err_message)
-
-        if type(self.title) != str:
-            err_message = "Argument 'title' has to be of type 'str', not '{}'".format(type(self.title))
-            raise ValueError(err_message)
-
-        if type(self.xlabel) != str:
-            err_message = "Argument 'xlabel' has to be of type 'str', not '{}'".format(type(self.xlabel))
-            raise ValueError(err_message)
-
-        if type(self.ylabel) != str:
-            err_message = "Argument 'ylabel' has to be of type 'str', not '{}'".format(type(self.ylabel))
-            raise ValueError(err_message)
-
-        if type(self.fontsize) != int:
-            err_message = "Argument 'fontsize' has to be of type 'int', not '{}'".format(type(self.fontsize))
-            raise ValueError(err_message)
-
-        if type(self.labels) not in [str, list]:
-            err_message = "Argument 'labels' has to be of type 'str' or 'list' not '{}'".format(type(self.labels))
-            raise ValueError(err_message)
-
-        if type(self.xtick_labels) not in [str, list]:
-            err_message = "Argument 'xtick_labels' has to be of type 'str' or 'list' not '{}'".format(type(self.xtick_labels))
-            raise ValueError(err_message)
-
-        if type(self.name) != str:
-            err_message = "Argument 'name' has to be of type 'str', not '{}'".format(type(self.name))
-            raise ValueError(err_message)
-
-        if type(self.format) != str:
-            err_message = "Argument 'format' has to be of type 'str', not '{}'".format(type(self.format))
-            raise ValueError(err_message)
-
-        if type(self.output_dirpath) != str:
-            err_message = "Argument 'output_dirpath' has to be of type 'str', not '{}'".format(type(self.output_dirpath))
-            raise ValueError(err_message)
+        return class_attributes_convert_funs
 
 
-    def __check_str(self, class_attributes):
-        for class_attribute in class_attributes:
+    def check_data_types(self, class_attr_allowed_data_types):
+
+        for class_attribute in class_attr_allowed_data_types.keys():
             class_variable = self.__getattribute__(class_attribute)
-            if type(class_variable) != str:
-                err_message = "Argument '{}' has to be of type 'str', not '{}'".format(class_attribute,
-                                                                                       type(class_variable))
+            data_types = class_attr_allowed_data_types[class_attribute]
+            data_types_str = [str(data_type) for data_type in data_types]
+            if type(class_variable) not in data_types and class_variable is not None:
+                err_message = "Argument '{}' has to be of type '{}', not '{}'".format(class_attribute,
+                                                                                      "/".join(data_types_str),
+                                                                                      type(class_variable))
                 raise ValueError(err_message)
 
-    def __convert(self):
 
-        if type(self.overwrite) == str:
-            self.overwrite = PyPlotBase.str2none(self.overwrite)
-            if self.overwrite is not None:
-                self.overwrite = self.overwrite.lower() == "true"
+    def convert(self, class_attr_convert_funs):
+        for class_attribute in class_attr_convert_funs.keys():
+            class_variable = self.__getattribute__(class_attribute)
+            convert_funs = class_attr_convert_funs[class_attribute]
+            if type(class_variable) == str:
+                for convert_fun in convert_funs:
+                    self.__setattr__(class_attribute, convert_fun(class_variable, nodata_value=None))
 
-        if type(self.data_ordered) == str:
-            self.data_ordered = PyPlotBase.str2none(self.data_ordered)
-            if self.data_ordered is not None:
-                self.data_ordered = self.data_ordered.lower() == "true"
+    def __read(self, data, delimiter=';'):
+        if type(data) == str:
+            return [self.str2num(entry, nodata_value=np.nan) for entry in data.split(delimiter)]
+        elif type(data) == list and type(data[0]) in [int, float]:
+            return data
+        elif type(data) == list and type(data[0]) == str:
+            return [self.str2num(entry, nodata_value=np.nan) for entry in data]
+        else:
+            raise ValueError("Can't read input data.")
 
-        if type(self.xmin) == str:
-            self.xmin = PyPlotBase.str2none(self.xmin)
-            if self.xmin is not None:
-                self.xmin = self.str2num(self.xmin, nodata_value=None)
-                if self.xmin is None:
-                    self.xmin = self.str2datetime(self.xmin, nodata_value=None)
-
-        if type(self.xmax) == str:
-            self.xmax = PyPlotBase.str2none(self.xmax)
-            if self.xmax is not None:
-                self.xmax = self.str2num(self.xmax, nodata_value=None)
-                if self.xmax is None:
-                    self.xmax = self.str2datetime(self.xmax, nodata_value=None)
-
-        if type(self.ymin) == str:
-            self.ymin = PyPlotBase.str2none(self.ymin)
-            if self.ymin is not None:
-                self.ymin = self.str2num(self.ymin, nodata_value=None)
-                if self.ymin is None:
-                    self.ymin = self.str2datetime(self.ymin, nodata_value=None)
-
-        if type(self.ymax) == str:
-            self.ymax = PyPlotBase.str2none(self.ymax)
-            if self.ymax is not None:
-                self.ymax = self.str2num(self.ymax, nodata_value=None)
-                if self.ymax is None:
-                    self.ymax = self.str2datetime(self.ymax, nodata_value=None)
-
-        if type(self.alpha) == str:
-            self.alpha = PyPlotBase.str2none(self.alpha)
-            if self.alpha is not None:
-                self.alpha = self.str2num(self.alpha, nodata_value=None)
-
-        if type(self.latex) == str:
-            self.latex = PyPlotBase.str2none(self.latex)
-            if self.latex is not None:
-                self.latex = self.latex.lower() == "true"
-
-        if type(self.xtick_rot) == str:
-            self.xtick_rot = PyPlotBase.str2none(self.xtick_rot)
-            if self.xtick_rot is not None:
-                self.xtick_rot = self.str2num(self.xtick_rot, nodata_value=None)
-
-        if type(self.legend_loc) == str:
-            self.legend_loc = PyPlotBase.str2none(self.legend_loc)
-            if self.legend_loc is not None:
-                self.legend_loc = self.str2num(self.legend_loc, nodata_value=None)
-
-        if type(self.fontsize) == str:
-            self.fontsize = PyPlotBase.str2none(self.fontsize)
-            if self.fontsize is not None:
-                self.fontsize = self.str2num(self.fontsize, nodata_value=None)
-
-        if type(self.size) == str:
-            self.size = self.dimstr2tuple(self.size)
-
-        if type(self.colours) == str:
-            self.colours = self.str2colours(self.colours)
-
-        if type(self.labels) == str:
-            self.labels = self.str2labels(self.labels)
-
-        if type(self.xtick_labels) == str:
-            self.labels = self.str2labels(self.xtick_labels)
-
-    def parse(self, data, ordered=True, delimiter=';'):
+    # always the last index is used for filling the gaps in the data!
+    def _parse(self, data, ordered=True, delimiter=';', dims=['x', 'y']):
         self.data_ordered = ordered
-        x_data = dict()
-        y_data = dict()
-        data_counter = 0
-        for i, entries in enumerate(data):
-            if ordered and (entries[0] not in ['x', 'y']):
-                if i%2 == 0:
-                    axis = "x"
+        data_map = dict()
+        for dim in dims:
+            data_map[dim] = dict()
+        if type(data) in [dict, OrderedDict]:
+            for key in data.keys():
+                axis = key.split('_')[0]
+                idx = int(key.split('_')[1])
+                data_map[axis][idx] = self.__read(data[key], delimiter=delimiter)
+        elif type(data) == list:
+            for i, entries in enumerate(data):
+                first_entry = str(entries[0]).split('_')[0]
+                idx = None
+                if first_entry in dims:
+                    axis = first_entry
+                elif ordered:
+                    if (i % len(dims)) == 0:
+                        axis = dims[0]
+                    elif (i % len(dims)) == 1:
+                        axis = dims[1]
+                    else:
+                        axis = dims[2]
+                    idx = len(data_map[axis])
                 else:
-                    axis = "y"
-                entries = axis + delimiter + entries
+                    raise ValueError('Data must be ordered or tagged.')
 
-            entries = entries.split(delimiter)
-            data_id = entries[0]
-            data_id_split = data_id.split('_')
-            axis = data_id_split[0]
-            if len(data_id_split) != 2:
-                idx = data_counter
-            else:
-                idx = data_id_split[1]
+                if type(entries) == str:
+                    entries_split = entries.split(delimiter)
+                    if idx is None:
+                        idx = int(entries_split[0].split('_')[1])
+                    data_map[axis][idx] = self.__read(entries_split[1:], delimiter=delimiter)
+                elif type(entries) == list:
+                    if idx is None:
+                        idx = int(entries[0].split('_')[1])
+                    data_map[axis][idx] = self.__read(entries[1:], delimiter=delimiter)
+                else:
+                    raise ValueError('Each data entry (one axis data) must be of type str or list.')
+        elif type(data) == str:
+            self._parse(data.split('\n'), ordered=ordered, delimiter=delimiter, dims=dims)
+        else:
+            raise ValueError('Data type not understood.')
 
-            if axis == 'x':
-                x_data[idx] = [self.str2num(entry, nodata_value=np.nan) for entry in entries[1:]]
-            elif axis == 'y':
-                y_data[idx] = [self.str2num(entry, nodata_value=np.nan) for entry in entries[1:]]
-                data_counter += 1
-            else:
-                raise Exception('Wrong tag/axis specification. Use either "x" or "y".')
+        # check if all entries are complete (available in all dimensions)!
+        for i in range(1, len(dims)):
+            dim_entries_prev = sorted(list(data_map[dims[i-1]].keys()))
+            dim_entries_curr = sorted(list(data_map[dims[i]].keys()))
 
-        # equalise both dictionary
-        for i in y_data.keys():
-            if i not in x_data.keys():
-                x_data[i] = x_data[max(x_data.keys())]
+            if dim_entries_curr != dim_entries_prev:
+                raise Exception('The specification of the axis tagging is not valid (e.g. x_1, y_2), '
+                                'dimensions do not match!')
 
-        return x_data, y_data
+
+        return data_map
 
     @staticmethod
     def rnd_colours(n):
@@ -333,6 +274,16 @@ class PyPlotBase(object):
         rnd_idxs = random.sample(range(0, 1000), n)
 
         return [cmap(idx) for idx in rnd_idxs]
+
+    @staticmethod
+    def str2bool(string, nodata_value=None):
+        string = string.strip().lower()
+        if string in ['true', 'false']:
+            boolean = string == 'true'
+        else:
+            boolean = nodata_value
+
+        return boolean
 
     @staticmethod
     def str2num(string, nodata_value=None):
@@ -363,13 +314,14 @@ class PyPlotBase(object):
 
     @staticmethod
     def str2none(string):
-        if string.strip() in ['None', 'NaN', 'nan', 'inf']:
+        if string.strip().lower() in ['none', 'nan', 'inf']:
             return None
         else:
             return string
 
     @staticmethod
-    def str2colours(string, delimiter=';', delimiter_channel=',', left_closure='(', right_closure=')'):
+    def str2colours(string, delimiter=';', delimiter_channel=',', left_closure='(', right_closure=')',
+                    nodata_value=None):
         if delimiter == delimiter_channel:
             raise Exception('Delimiter of the different colours has to be different than the delimiter of the colour channels.')
         str_parts = string.split(delimiter)
@@ -378,13 +330,13 @@ class PyPlotBase(object):
         for i in range(n):
             if delimiter_channel in str_parts[i]:
                 colour = PyPlotBase.colourstr2tuple(str_parts[i], delimiter=delimiter, left_closure=left_closure,
-                                                    right_closure=right_closure)
+                                                    right_closure=right_closure, nodata_value=nodata_value)
                 colours.append(colour)
             else:
                 colours.append(str_parts[i])
 
     @staticmethod
-    def colourstr2tuple(colour_str, delimiter=',', left_closure='(', right_closure=')'):
+    def colourstr2tuple(colour_str, delimiter=',', left_closure='(', right_closure=')', nodata_value=None):
         colour_str = colour_str.replace(left_closure, '').replace(right_closure, '').strip()
         colour_str_parts = colour_str.split(delimiter)
         if len(colour_str_parts) != 3:
@@ -394,12 +346,12 @@ class PyPlotBase(object):
         return colour
 
     @staticmethod
-    def str2labels(label_str, delimiter=';'):
+    def str2labels(label_str, delimiter=';', nodata_value=None):
         labels = label_str.split(delimiter)
         return labels
 
     @staticmethod
-    def dimstr2tuple(dim_str, delimiter='x'):
+    def dimstr2tuple(dim_str, delimiter='x', nodata_value=None):
         dim_str_parts = dim_str.split(delimiter)
         if len(dim_str_parts) != 2:
             raise Exception('Only two dimensions are allowed.')
@@ -426,65 +378,60 @@ class PyPlotBase(object):
             self.plt.figure(fig_name)
             self.plt.close()
 
+
 class PyPlotHist(PyPlotBase):
 
-    def __init__(self, output_dirpath="plots", name="base", format="png", overwrite=False, latex=False,
-                 size="10x7.5", title="", xlabel="", ylabel="", xmin=None, ymin=None, xmax=None, ymax=None,
+    def __init__(self, output_dirpath="plots", name="base", format="png",
+                 overwrite=False, latex=False, data_ordered=True,
+                 fig_size="10x7.5", fig_dpi=80, fig_facecolor='w', fig_edgecolor='k',
+                 fig_title="", xlabel="", ylabel="", xmin=None, ymin=None, xmax=None, ymax=None,
                  xtick_labels=None, xtick_rot=None, colours="random", alpha=1, labels=None, legend_loc=1, fontsize=None,
-                 ordered=True,
+
                  bins=10, normed=False, bin_width=None):
-        PyPlotBase.__init__(self, output_dirpath=output_dirpath, name=name, format=format, overwrite=overwrite,
-                            latex=latex, size=size, title=title, xlabel=xlabel, ylabel=ylabel, xmin=xmin, ymin=ymin,
-                            xmax=xmax, ymax=ymax, xtick_labels=xtick_labels, xtick_rot=xtick_rot, colours=colours,
-                            alpha=alpha, labels=labels, legend_loc=legend_loc, fontsize=fontsize, ordered=ordered)
+        PyPlotBase.__init__(self, output_dirpath=output_dirpath, name=name, format=format,
+                            overwrite=overwrite, latex=latex, data_ordered=data_ordered,
+                            fig_size=fig_size, fig_dpi=fig_dpi, fig_facecolor=fig_facecolor, fig_edgecolor=fig_edgecolor,
+                            fig_title=fig_title, xlabel=xlabel, ylabel=ylabel,
+                            xmin=xmin, ymin=ymin, xmax=xmax, ymax=ymax, xtick_labels=xtick_labels, xtick_rot=xtick_rot,
+                            colours=colours, alpha=alpha, labels=labels, legend_loc=legend_loc, fontsize=fontsize)
         self.bins = bins
         self.normed = normed
         self.bin_width = bin_width
 
         # check data types
-        self.__check_data_types()
+        self.check_data_types(self.__allowed_data_types())
 
         # convert data given as strings
-        self.__convert()
+        self.convert(self.__convert_funs())
 
+    def __allowed_data_types(self):
 
-    def __repr__(self):
-        output = []
-        for k in self.__dict__:
-            output.append('{0}: {1}'.format(k, self.__dict__[k]))
-        return '\n'.join(output)
+        class_attributes_data_types = dict()
+        class_attributes_data_types['bins'] = [int]
+        class_attributes_data_types['normed'] = [bool]
+        class_attributes_data_types['bin_width'] = [int, float]
 
-    def __convert(self):
+        return class_attributes_data_types
 
-        if type(self.bins) == str:
-            self.bins = int(self.bins)
+    def __convert_funs(self):
 
-        if type(self.normed) == str:
-            self.normed = self.normed.lower() == "true"
+        class_attributes_convert_funs = dict()
+        class_attributes_convert_funs['bins'] = [self.str2num]
+        class_attributes_convert_funs['normed'] = [self.str2bool]
+        class_attributes_convert_funs['bin_width'] = [self.str2num]
 
-        if type(self.bin_width) == str:
-            self.bin_width = float(self.bin_width)
+    def plot(self, data, ordered=True, delimiter=';'):
+        data_map = self._parse(data, ordered=ordered, delimiter=delimiter, dims=['x'])
 
-    def __check_data_types(self):
+        # set general styles
+        fig = self.plt.figure(num=self.fig_name, figsize=self.fig_size, dpi=self.fig_dpi, facecolor=self.fig_facecolor,
+                              edgecolor=self.fig_facecolor)
 
-        if type(self.bins) != int:
-            err_message = "Argument 'bins' has to be of type 'int', not '{}'".format(type(self.bins))
-            raise ValueError(err_message)
+        self.plt.title(self.fig_title)
+        self.plt.xlabel(self.xlabel)
+        self.plt.ylabel(self.ylabel)
 
-        if type(self.normed) != bool:
-            err_message = "Argument 'normed' has to be of type 'bool', not '{}'".format(type(self.normed))
-            raise ValueError(err_message)
-
-        if type(self.bin_width) not in [int, float]:
-            err_message = "Argument 'bin_width' has to be of type 'int' or 'float', not '{}'".format(type(self.bin_width))
-            raise ValueError(err_message)
-
-    def plot(self, data):
-        dims = self.dimstr2tuple(self.size)
-        fig = self.plt.figure(num=self.fig_name, figsize=dims, dpi=80, facecolor='w', edgecolor='k')
-        fig.set_size_inches(dims[0], dims[1], forward=True)
-
-        if self.latex.lower() == "true":
+        if self.latex:
             self.plt.rc('text', usetex=True)
             self.plt.rc('font', family='serif')
         else:
@@ -493,54 +440,31 @@ class PyPlotHist(PyPlotBase):
         if self.fontsize is not None:
             self.plt.rcParams.update({'font.size': self.fontsize})
 
-        self.plt.xlabel(self.xlabel)
-        self.plt.ylabel(self.ylabel)
-        self.plt.title(self.title)
-
-        if type(data[0]) == str:
-            x_data, y_data = self._split_xy(data)
-        else:
-            y_data = dict()
-            for idx in range(len(data)):
-                y_data[str(idx)] = data[idx]
-
-        self._split_colors(len(y_data))
-
         # set axis limits
-        if not callable(self.xmin):
-            xmin = float(self.xmin)
-        else:
-            xmin = self.xmin([ii for i in y_data.values() for ii in i])
-        if not callable(self.xmax):
-            xmax = float(self.xmax)
-        else:
-            xmax = self.xmax([ii for i in y_data.values() for ii in i])
+        if self.xmin is not None and self.xmax is not None:
+            self.plt.xlim([self.xmin, self.xmax])
 
-        if not callable(self.xmin) and not callable(self.xmax):
-            self.plt.xlim([xmin, xmax])
+        for i, idx in enumerate(data_map['x'].keys()):
+            # set bins
+            if self.bin_width is not None:
+                xmin = np.min(data_map['x'][idx])
+                xmax = np.min(data_map['x'][idx])
+                if self.xmin is not None and self.xmax is not None:
+                    xmin = np.min([xmin, self.xmin])
+                    xmax = np.min([xmax, self.xmax])
+                self.bins = list(np.arange(xmin, xmax + self.bin_width, self.bin_width))
 
-        # set bins
-        if self.bin_width is not None:
-            self.bins = list(np.arange(xmin, xmax + self.bin_width, self.bin_width))
-
-        if self.label != "":
-            self._split_labels(len(y_data))
-            for idx, plt_idx in enumerate(y_data.keys()):
-                self.plt.hist(y_data[plt_idx], normed=self.normed, color=self.color[idx], alpha=float(self.alpha),
-                              label=self.label[idx], bins=self.bins)
-            self.plt.legend(loc=self.legend_loc)
-        else:
-            for idx, plt_idx in enumerate(y_data.keys()):
-                self.plt.hist(y_data[plt_idx], normed=self.normed, color=self.color[idx], alpha=float(self.alpha),
+            # plot data
+            if self.labels is not None:
+                self.plt.hist(data_map['x'][idx], normed=self.normed, color=self.colours[idx], alpha=self.alpha,
+                              label=self.labels[idx], bins=self.bins)
+                self.plt.legend(loc=self.legend_loc)
+            else:
+                self.plt.hist(data_map['x'][idx], normed=self.normed, color=self.colours[idx], alpha=self.alpha,
                               bins=self.bins)
 
 
-
-        # set bins
-
-
-
-class GeoPlotLine(GeoPlot):
+class GeoPlotLine(PyPlotBase):
     def __init__(self, title="", xlabel="", ylabel="", xtick_labels=None, xtick_rot=None,
                  xmin=None, ymin=None,
                  xmax=None, ymax=None,
@@ -568,7 +492,7 @@ class GeoPlotLine(GeoPlot):
             output.append('{0}: {1}'.format(k, self.__dict__[k]))
         return '\n'.join(output)
 
-    def plot(self, data):
+    def plot(self, data, **kwargs):
         dims = [float(x) for x in self.size.split('x')]
         fig = self.plt.figure(self.fig_name)
         fig.set_size_inches(dims[0], dims[1], forward=True)
@@ -584,7 +508,7 @@ class GeoPlotLine(GeoPlot):
 
         self.plt.xlabel(self.xlabel)
         self.plt.ylabel(self.ylabel)
-        self.plt.title(self.title)
+        self.plt.title(self.fig_title)
 
         if type(data[0]) == str:
             x_data, y_data = self._split_xy(data)
@@ -672,7 +596,7 @@ class GeoPlotLine(GeoPlot):
         return plot_handles
 
 
-class GeoPlotStem(GeoPlot):
+class GeoPlotStem(PyPlotBase):
     def __init__(self, title="", xlabel="", ylabel="", xtick_labels=None, xtick_rot=None,
                  xmin=None, ymin=None,
                  xmax=None, ymax=None,
@@ -713,7 +637,7 @@ class GeoPlotStem(GeoPlot):
 
         self.plt.xlabel(self.xlabel)
         self.plt.ylabel(self.ylabel)
-        self.plt.title(self.title)
+        self.plt.title(self.fig_title)
 
         if type(data[0]) == str:
             x_data, y_data = self._split_xy(data)
@@ -803,7 +727,7 @@ class GeoPlotStem(GeoPlot):
             self.plt.xticks(rotation=self.xtick_rot)
 
 
-class GeoPlotPoint(GeoPlot):
+class GeoPlotPoint(PyPlotBase):
     def __init__(self, title="", xlabel="", ylabel="", xtick_labels=None, xtick_rot=None,
                  xmin=lambda x: np.nanmin(x), ymin=lambda x: np.nanmin(x),
                  xmax=lambda x: np.nanmax(x), ymax=lambda x: np.nanmax(x),
@@ -849,7 +773,7 @@ class GeoPlotPoint(GeoPlot):
 
         self.plt.xlabel(self.xlabel)
         self.plt.ylabel(self.ylabel)
-        self.plt.title(self.title)
+        self.plt.title(self.fig_title)
 
         if type(data[0]) == str:
             x_data, y_data = self._split_xy(data)
@@ -940,7 +864,7 @@ class GeoPlotPoint(GeoPlot):
         if not callable(self.ymin) and not callable(self.ymax):
             self.plt.ylim([ymin, ymax])
 
-class GeoPlotTiff(GeoPlot):
+class GeoPlotTiff(PyPlotBase):
     def __init__(self):
         GeoPlot.__init__(self)
         self.filename = r'tests\test.tif'
@@ -976,7 +900,7 @@ class GeoPlotTiff(GeoPlot):
 
         self.plt.xlabel(self.xlabel)
         self.plt.ylabel(self.ylabel)
-        self.plt.title(self.title)
+        self.plt.title(self.fig_title)
 
         im = Geotiff(self.filename)
         x0, dx, dxdy, y0, dydx, dy = im.get_geo_info()
@@ -1076,7 +1000,7 @@ class GeoPlotTiff(GeoPlot):
 
         return deg + min
 
-class GeoPlotBar(GeoPlot):
+class GeoPlotBar(PyPlotBase):
     def __init__(self):
         GeoPlot.__init__(self)
         self.bar_width = 0.8
@@ -1101,7 +1025,7 @@ class GeoPlotBar(GeoPlot):
 
         self.plt.xlabel(self.xlabel)
         self.plt.ylabel(self.ylabel)
-        self.plt.title(self.title)
+        self.plt.title(self.fig_title)
 
         x_data, y_data = self._split_xy(data)
         self._split_colors(len(y_data))
@@ -1157,7 +1081,7 @@ class GeoPlotBar(GeoPlot):
         self.plt.ylim([ymin, ymax])
 
 
-class GeoPlotArray(GeoPlot):
+class GeoPlotArray(PyPlotBase):
     def __init__(self, title="", xlabel="", ylabel="", xtick_labels=None, xtick_rot=None,
                  xmin=lambda x: np.nanmin(x), ymin=lambda x: np.nanmin(x),
                  xmax=lambda x: np.nanmax(x), ymax=lambda x: np.nanmax(x),
@@ -1211,7 +1135,7 @@ class GeoPlotArray(GeoPlot):
 
             #self.plt.grid(linewidth=0.7, linestyle='-')
             cbaxes = fig.add_axes([0.215, 0.94, 0.6, 0.03])
-            cbaxes.set_title(self.title)
+            cbaxes.set_title(self.fig_title)
             colorbar_fig = self.plt.colorbar(im_fig, orientation=self.colorbar_orientation, cax=cbaxes)
             #self.plt.gca().grid(False)
 
@@ -1245,7 +1169,7 @@ class GeoPlotArray(GeoPlot):
         if self.ymin and self.ymax:
             axes.set_ylim([self.ymin, self.ymax])
 
-class GeoPlotMatrix(GeoPlot):
+class GeoPlotMatrix(PyPlotBase):
     def __init__(self, title="", xlabel="", ylabel="", xtick_labels=None, xtick_rot=None,
                  xmin=lambda x: np.nanmin(x), ymin=lambda x: np.nanmin(x),
                  xmax=lambda x: np.nanmax(x), ymax=lambda x: np.nanmax(x),
@@ -1378,7 +1302,7 @@ class GeoPlotMatrix(GeoPlot):
                     #             xy=(col + 0.5, self.array.shape[0] - (row + 0.5)),
                     #             ha='center', va='center', fontsize=16, weight='bold')
 
-class GeoPlotReader(GeoPlotHist, GeoPlotLine, GeoPlotPoint, GeoPlotTiff, GeoPlotBar):
+class GeoPlotReader(PyPlotHist, GeoPlotLine, GeoPlotPoint, GeoPlotTiff, GeoPlotBar):
     def __init__(self, header):
         attributes = self.read_attr_from_header(header)
         if 'type' in attributes.keys():
@@ -1483,7 +1407,7 @@ class GeoPlotReader(GeoPlotHist, GeoPlotLine, GeoPlotPoint, GeoPlotTiff, GeoPlot
                 gpr.save()
             gpr.close()
 
-class GeoPlotWriter(GeoPlotHist, GeoPlotLine, GeoPlotPoint, GeoPlotTiff, GeoPlotBar):
+class GeoPlotWriter(PyPlotHist, GeoPlotLine, GeoPlotPoint, GeoPlotTiff, GeoPlotBar):
     def __init__(self, input_filepath, type):
         if type == 'hist':
             GeoPlotHist.__init__(self)
@@ -1530,32 +1454,33 @@ def save_plts(plt_filepath):
         GeoPlotReader.from_plt_file(plt_fid, save=True)
 
 if __name__ == "__main__":
-    plt_filename = r'D:\TU_Wien\Master\Masterthesis\Data\plt\environ_bs.plt'
-    #GeoPlotReader.from_plt_file(plt_filename)
-    #with open('tests/test.plt', 'r') as file_handle:
-    #with open('../../data/plt/latlon.plt', 'r') as file_handle:
-    with open(r'D:\TU_Wien\Master\Masterthesis\Data\plt\bs_plia\VV_4877550_1590366.plt', 'r') as file_handle:
-        content = file_handle.readlines()
-    sep_counter = 0
-    header_curr = []
-    data_curr = []
-    head_sep = ''.join(['#'] * 100)
-    for idx, line in enumerate(content):
-        if head_sep == line.strip():
-            sep_counter += 1
-            if ((sep_counter % 2) != 0) and (sep_counter != 1):
-                gpr = GeoPlotReader(header_curr)
-                gpr.plot(data=data_curr)
-                header_curr = []
-                data_curr = []
-        else:
-            if (sep_counter % 2) == 0:
-                data_curr.append(line.strip())
-            else:
-                header_curr.append(line.strip())
-
-    if header_curr or data_curr:
-        gpr = GeoPlotReader(header_curr)
-        gpr.plot(data=data_curr)
-        gpr.save()
-        #gpr.show()
+    plt_hist = PyPlotHist()
+    # plt_filename = r'D:\TU_Wien\Master\Masterthesis\Data\plt\environ_bs.plt'
+    # #GeoPlotReader.from_plt_file(plt_filename)
+    # #with open('tests/test.plt', 'r') as file_handle:
+    # #with open('../../data/plt/latlon.plt', 'r') as file_handle:
+    # with open(r'D:\TU_Wien\Master\Masterthesis\Data\plt\bs_plia\VV_4877550_1590366.plt', 'r') as file_handle:
+    #     content = file_handle.readlines()
+    # sep_counter = 0
+    # header_curr = []
+    # data_curr = []
+    # head_sep = ''.join(['#'] * 100)
+    # for idx, line in enumerate(content):
+    #     if head_sep == line.strip():
+    #         sep_counter += 1
+    #         if ((sep_counter % 2) != 0) and (sep_counter != 1):
+    #             gpr = GeoPlotReader(header_curr)
+    #             gpr.plot(data=data_curr)
+    #             header_curr = []
+    #             data_curr = []
+    #     else:
+    #         if (sep_counter % 2) == 0:
+    #             data_curr.append(line.strip())
+    #         else:
+    #             header_curr.append(line.strip())
+    #
+    # if header_curr or data_curr:
+    #     gpr = GeoPlotReader(header_curr)
+    #     gpr.plot(data=data_curr)
+    #     gpr.save()
+    #     #gpr.show()
