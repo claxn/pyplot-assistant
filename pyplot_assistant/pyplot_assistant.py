@@ -24,8 +24,8 @@ class PyPlotBase(object):
                  overwrite=False, latex=False, data_ordered=True,
                  fig_size="10x7.5", fig_dpi=80, fig_facecolor='w', fig_edgecolor='k',
                  fig_title="", xlabel="", ylabel="", xmin=None, ymin=None, xmax=None, ymax=None,
-                 xtick_labels=None, xtick_rot=None, colours="random", alpha=1, labels=None, legend_loc=1,
-                 fontsize=None):
+                 xtick_labels=None, xtick_rot=None, colours="random", alpha=1, labels=None, fontsize=None,
+                 legend_loc=1, legend_bbox=None, legend_ncols=1):
 
         """
 
@@ -95,6 +95,8 @@ class PyPlotBase(object):
         self.latex = latex
         self.xtick_rot = xtick_rot
         self.legend_loc = legend_loc
+        self.legend_bbox = legend_bbox
+        self.legend_ncols = legend_ncols
         # labelling
         self.fig_title = fig_title
         self.xlabel = xlabel
@@ -144,6 +146,8 @@ class PyPlotBase(object):
         class_attributes_data_types['latex'] = [bool]
         class_attributes_data_types['xtick_rot'] = [int, float]
         class_attributes_data_types['legend_loc'] = [int]
+        class_attributes_data_types['legend_bbox'] = [tuple]
+        class_attributes_data_types['legend_ncols'] = [int]
         class_attributes_data_types['fig_title'] = [str]
         class_attributes_data_types['xlabel'] = [str]
         class_attributes_data_types['ylabel'] = [str]
@@ -163,8 +167,8 @@ class PyPlotBase(object):
         class_attributes_convert_funs['data_ordered'] = [self.str2bool]
         class_attributes_convert_funs['fig_size'] = [self.dimstr2tuple]
         class_attributes_convert_funs['fig_dpi'] = [self.str2num]
-        class_attributes_convert_funs['fig_facecolor'] = [self.str2colours]
-        class_attributes_convert_funs['fig_edgecolor'] = [self.str2colours]
+        class_attributes_convert_funs['fig_facecolor'] = [self.str2colour]
+        class_attributes_convert_funs['fig_edgecolor'] = [self.str2colour]
         class_attributes_convert_funs['xmin'] = [self.str2num, self.str2datetime]
         class_attributes_convert_funs['ymin'] = [self.str2num, self.str2datetime]
         class_attributes_convert_funs['xmax'] = [self.str2num, self.str2datetime]
@@ -174,6 +178,8 @@ class PyPlotBase(object):
         class_attributes_convert_funs['latex'] = [self.str2bool]
         class_attributes_convert_funs['xtick_rot'] = [self.str2num]
         class_attributes_convert_funs['legend_loc'] = [self.str2num]
+        class_attributes_convert_funs['legend_bbox'] = [self.str2tuple]
+        class_attributes_convert_funs['legend_ncols'] = [self.str2num]
         class_attributes_convert_funs['fontsize'] = [self.str2num]
         class_attributes_convert_funs['labels'] = [self.str2labels]
         class_attributes_convert_funs['xtick_labels'] = [self.str2labels]
@@ -244,11 +250,15 @@ class PyPlotBase(object):
                     entries_split = entries.split(delimiter)
                     if idx is None:
                         idx = int(entries_split[0].split('_')[1])
-                    data_map[axis][idx] = self.__read(entries_split[1:], delimiter=delimiter)
+                        data_map[axis][idx] = self.__read(entries_split[1:], delimiter=delimiter)
+                    else:
+                        data_map[axis][idx] = self.__read(entries_split, delimiter=delimiter)
                 elif type(entries) == list:
                     if idx is None:
                         idx = int(entries[0].split('_')[1])
-                    data_map[axis][idx] = self.__read(entries[1:], delimiter=delimiter)
+                        data_map[axis][idx] = self.__read(entries[1:], delimiter=delimiter)
+                    else:
+                        data_map[axis][idx] = self.__read(entries, delimiter=delimiter)
                 else:
                     raise ValueError('Each data entry (one axis data) must be of type str or list.')
         elif type(data) == str:
@@ -328,21 +338,35 @@ class PyPlotBase(object):
         colours = []
         n = len(str_parts)
         for i in range(n):
-            if delimiter_channel in str_parts[i]:
-                colour = PyPlotBase.colourstr2tuple(str_parts[i], delimiter=delimiter, left_closure=left_closure,
-                                                    right_closure=right_closure, nodata_value=nodata_value)
-                colours.append(colour)
-            else:
-                colours.append(str_parts[i])
+            colours.append(PyPlotBase.str2colour(str_parts[i], delimiter=delimiter_channel, left_closure=left_closure,
+                                                 right_closure=right_closure, nodata_value=nodata_value))
+
+        return colours
+
+    @staticmethod
+    def str2colour(string, delimiter=',', left_closure='(', right_closure=')', nodata_value=None):
+        if delimiter in string:
+            colour = PyPlotBase.colourstr2tuple(string, delimiter=delimiter, left_closure=left_closure,
+                                                right_closure=right_closure, nodata_value=nodata_value)
+            return colour
+        elif "random" in string:
+            return PyPlotBase.rnd_colours(1)[0]
+        else:
+            return string
+
+    @staticmethod
+    def str2tuple(string, delimiter=',', left_closure='(', right_closure=')', length=None, nodata_value=None):
+        string_mod = string.replace(left_closure, '').replace(right_closure, '').strip()
+        str_parts = string_mod.split(delimiter)
+        if length is not None and len(str_parts) != length:
+            raise Exception('The parsed length of the given tuple string is not valid.')
+
+        return tuple([float(str_part) for str_part in str_parts])
 
     @staticmethod
     def colourstr2tuple(colour_str, delimiter=',', left_closure='(', right_closure=')', nodata_value=None):
-        colour_str = colour_str.replace(left_closure, '').replace(right_closure, '').strip()
-        colour_str_parts = colour_str.split(delimiter)
-        if len(colour_str_parts) != 3:
-            raise Exception('The given colour type is not valid. All three colour channels are needed (RGB).')
-
-        colour = (float(colour_str_parts[0]), float(colour_str_parts[1]), float(colour_str_parts[2]))
+        colour = PyPlotBase.str2tuple(colour_str, delimiter=delimiter, left_closure=left_closure,
+                                      right_closure=right_closure, nodata_value=nodata_value, length=3)
         return colour
 
     @staticmethod
@@ -385,15 +409,16 @@ class PyPlotHist(PyPlotBase):
                  overwrite=False, latex=False, data_ordered=True,
                  fig_size="10x7.5", fig_dpi=80, fig_facecolor='w', fig_edgecolor='k',
                  fig_title="", xlabel="", ylabel="", xmin=None, ymin=None, xmax=None, ymax=None,
-                 xtick_labels=None, xtick_rot=None, colours="random", alpha=1, labels=None, legend_loc=1, fontsize=None,
-
+                 xtick_labels=None, xtick_rot=None, colours="random", alpha=1, labels=None, fontsize=None,
+                 legend_loc=1, legend_bbox=None, legend_ncols=1,
                  bins=10, normed=False, bin_width=None):
         PyPlotBase.__init__(self, output_dirpath=output_dirpath, name=name, format=format,
                             overwrite=overwrite, latex=latex, data_ordered=data_ordered,
                             fig_size=fig_size, fig_dpi=fig_dpi, fig_facecolor=fig_facecolor, fig_edgecolor=fig_edgecolor,
                             fig_title=fig_title, xlabel=xlabel, ylabel=ylabel,
                             xmin=xmin, ymin=ymin, xmax=xmax, ymax=ymax, xtick_labels=xtick_labels, xtick_rot=xtick_rot,
-                            colours=colours, alpha=alpha, labels=labels, legend_loc=legend_loc, fontsize=fontsize)
+                            colours=colours, alpha=alpha, labels=labels, fontsize=fontsize,
+                            legend_loc=legend_loc, legend_bbox=legend_bbox, legend_ncols=legend_ncols)
         self.bins = bins
         self.normed = normed
         self.bin_width = bin_width
@@ -419,6 +444,8 @@ class PyPlotHist(PyPlotBase):
         class_attributes_convert_funs['bins'] = [self.str2num]
         class_attributes_convert_funs['normed'] = [self.str2bool]
         class_attributes_convert_funs['bin_width'] = [self.str2num]
+
+        return class_attributes_convert_funs
 
     def plot(self, data, ordered=True, delimiter=';'):
         data_map = self._parse(data, ordered=ordered, delimiter=delimiter, dims=['x'])
@@ -464,40 +491,41 @@ class PyPlotHist(PyPlotBase):
                               bins=self.bins)
 
 
-class GeoPlotLine(PyPlotBase):
-    def __init__(self, title="", xlabel="", ylabel="", xtick_labels=None, xtick_rot=None,
-                 xmin=None, ymin=None,
-                 xmax=None, ymax=None,
-                 type="line", name="noname", format="png", size="10x7.5", latex="False",
-                 color="random", alpha=1, label="", file_outpath=".\plots", overwrite=True,
-                 linestyle='-', linewidth=1, marker='', markerfacecolor='b', markersize=12, fontsize=None, legend_loc=0,
-                 legend_bbox=None):
+class PyPlotLine(PyPlotBase):
+    def __init__(self, output_dirpath="plots", name="base", format="png",
+                 overwrite=False, latex=False, data_ordered=True,
+                 fig_size="10x7.5", fig_dpi=80, fig_facecolor='w', fig_edgecolor='k',
+                 fig_title="", xlabel="", ylabel="", xmin=None, ymin=None, xmax=None, ymax=None,
+                 xtick_labels=None, xtick_rot=None, colours="random", alpha=1, labels=None, fontsize=None,
+                 legend_loc=1, legend_bbox=None, legend_ncols=1,
+                 linestyle='-', linewidth=1, marker='', markerfacecolor='b', markersize=12):
 
-        GeoPlot.__init__(self, title=title, xlabel=xlabel, ylabel=ylabel, xtick_labels=xtick_labels, xtick_rot=xtick_rot,
-                 xmin=xmin, ymin=ymin,xmax=xmax, ymax=ymax,
-                 type=type, name=name, format=format, size=size, latex=latex,
-                 color=color, alpha=alpha, label=label, file_outpath=file_outpath, overwrite=overwrite, fontsize=fontsize)
+        PyPlotBase.__init__(self, output_dirpath=output_dirpath, name=name, format=format,
+                            overwrite=overwrite, latex=latex, data_ordered=data_ordered,
+                            fig_size=fig_size, fig_dpi=fig_dpi, fig_facecolor=fig_facecolor, fig_edgecolor=fig_edgecolor,
+                            fig_title=fig_title, xlabel=xlabel, ylabel=ylabel,
+                            xmin=xmin, ymin=ymin, xmax=xmax, ymax=ymax, xtick_labels=xtick_labels, xtick_rot=xtick_rot,
+                            colours=colours, alpha=alpha, labels=labels, fontsize=fontsize,
+                            legend_loc=legend_loc, legend_bbox=legend_bbox, legend_ncols=legend_ncols)
 
         self.linestyle = linestyle
         self.linewidth = linewidth
         self.marker = marker
         self.markerfacecolor = markerfacecolor
         self.markersize = markersize
-        self.legend_loc = legend_loc
-        self.legend_bbox = legend_bbox
 
-    def __repr__(self):
-        output = []
-        for k in self.__dict__:
-            output.append('{0}: {1}'.format(k, self.__dict__[k]))
-        return '\n'.join(output)
+    def plot(self, data, ordered=True, delimiter=';'):
+        data_map = self._parse(data, ordered=ordered, delimiter=delimiter, dims=['x', 'y'])
 
-    def plot(self, data, **kwargs):
-        dims = [float(x) for x in self.size.split('x')]
-        fig = self.plt.figure(self.fig_name)
-        fig.set_size_inches(dims[0], dims[1], forward=True)
+        # set general styles
+        fig = self.plt.figure(num=self.fig_name, figsize=self.fig_size, dpi=self.fig_dpi, facecolor=self.fig_facecolor,
+                              edgecolor=self.fig_facecolor)
 
-        if self.latex.lower() == "true":
+        self.plt.title(self.fig_title)
+        self.plt.xlabel(self.xlabel)
+        self.plt.ylabel(self.ylabel)
+
+        if self.latex:
             self.plt.rc('text', usetex=True)
             self.plt.rc('font', family='serif')
         else:
@@ -506,20 +534,11 @@ class GeoPlotLine(PyPlotBase):
         if self.fontsize is not None:
             self.plt.rcParams.update({'font.size': self.fontsize})
 
-        self.plt.xlabel(self.xlabel)
-        self.plt.ylabel(self.ylabel)
-        self.plt.title(self.fig_title)
-
-        if type(data[0]) == str:
-            x_data, y_data = self._split_xy(data)
-        elif type(data[0]) == dict or type(data[0]) == OrderedDict:
-            x_data = data[0]
-            y_data = data[1]
-        else:
-            x_data = {'1': data[0]}
-            y_data = {'1': data[1]}
-
-        self._split_colors(len(y_data))
+        # set axis limits
+        if self.xmin is not None and self.xmax is not None:
+            self.plt.xlim([self.xmin, self.xmax])
+        if self.ymin is not None and self.ymax is not None:
+            self.plt.ylim([self.ymin, self.ymax])
 
         plot_handles = []
         if self.label != "":
